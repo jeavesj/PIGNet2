@@ -18,11 +18,12 @@ ENV_NAME="pignet2"
 echo "==> Creating conda environment '${ENV_NAME}' (Python 3.9)..."
 conda create -y -n "${ENV_NAME}" python=3.9
 
-echo "==> Installing conda packages (rdkit, openbabel, pymol-open-source)..."
+echo "==> Installing conda packages (rdkit, openbabel, pymol-open-source, reduce)..."
 conda install -y -n "${ENV_NAME}" \
     rdkit=2022.03.4 \
     openbabel \
     pymol-open-source \
+    reduce \
     -c conda-forge
 
 echo "==> Installing pip dependencies..."

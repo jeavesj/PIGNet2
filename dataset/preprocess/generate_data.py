@@ -177,6 +177,32 @@ def extract_ith_mol(
     return Path(tmp_path)
 
 
+def _fix_and_sanitize(mol: Optional[Chem.Mol]) -> Optional[Chem.Mol]:
+    """Fix carboxylate encoding where the SDF puts formal charge -1 on C with
+    two C=O double bonds (MDL charge code 5 on C). Converts to C(=O)[O-]."""
+    if mol is None:
+        return None
+    rwmol = Chem.RWMol(mol)
+    for atom in rwmol.GetAtoms():
+        if atom.GetSymbol() != "C" or atom.GetFormalCharge() != -1:
+            continue
+        double_o_bonds = [
+            b for b in atom.GetBonds()
+            if b.GetBondTypeAsDouble() == 2.0 and b.GetOtherAtom(atom).GetSymbol() == "O"
+        ]
+        if len(double_o_bonds) >= 2:
+            atom.SetFormalCharge(0)
+            other_o = double_o_bonds[0].GetOtherAtom(atom)
+            rwmol.RemoveBond(atom.GetIdx(), other_o.GetIdx())
+            rwmol.AddBond(atom.GetIdx(), other_o.GetIdx(), Chem.BondType.SINGLE)
+            other_o.SetFormalCharge(-1)
+    try:
+        Chem.SanitizeMol(rwmol)
+        return rwmol.GetMol()
+    except Exception:
+        return None
+
+
 def read_mols(
     file_path: Union[str, Path],
     sanitize: bool = True,
@@ -187,7 +213,17 @@ def read_mols(
     path = Path(file_path)
 
     if path.suffix in (".sdf", ".mol"):
-        mols = Chem.SDMolSupplier(str(path), **kwargs)
+        mols = list(Chem.SDMolSupplier(str(path), **kwargs))
+        # Some PDBbind SDF files encode carboxylate carbons with both a formal
+        # charge (-1) and two C=O double bonds, giving valence 6. RDKit's full
+        # sanitizer rejects these. For any molecule that failed to parse, re-read
+        # without sanitization, fix the misplaced formal charges, then sanitize.
+        if sanitize and any(m is None for m in mols):
+            raw = list(Chem.SDMolSupplier(str(path), sanitize=False, removeHs=kwargs["removeHs"]))
+            mols = [
+                m if m is not None else _fix_and_sanitize(r)
+                for m, r in zip(mols, raw)
+            ]
     elif path.suffix == ".mol2":
         mols = mols_from_mol2_file(path, **kwargs)
     elif path.suffix == ".pdb":

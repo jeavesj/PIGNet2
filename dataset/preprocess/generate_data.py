@@ -178,24 +178,85 @@ def extract_ith_mol(
 
 
 def _fix_and_sanitize(mol: Optional[Chem.Mol]) -> Optional[Chem.Mol]:
-    """Fix carboxylate encoding where the SDF puts formal charge -1 on C with
-    two C=O double bonds (MDL charge code 5 on C). Converts to C(=O)[O-]."""
+    """Fix PDBbind SDF files with misplaced or missing formal charges.
+
+    Known patterns (MDL encoding bugs):
+      Carboxylate:  C(-1) with two C=O  →  C(=O)[O-]   charge moves to single-bonded O
+      Guanidinium:  C(+1) with N+ C=N   →  [NH2+]=C(N)  charge moves to double-bonded N
+      Sulfonate:    S(0) with three S=O  →  S(=O)(=O)[O-]  one =O becomes -[O-]
+      Iminium:      N(0) with valence 4  →  [N+]
+    """
     if mol is None:
         return None
     rwmol = Chem.RWMol(mol)
+
+    # Fix 1: C with misplaced charge and excess double bonds to heteroatoms.
+    # Change all double bonds to the het except the last one; move the charge.
     for atom in rwmol.GetAtoms():
-        if atom.GetSymbol() != "C" or atom.GetFormalCharge() != -1:
+        if atom.GetSymbol() != "C":
             continue
-        double_o_bonds = [
+        charge = atom.GetFormalCharge()
+        if charge == -1:
+            het = "O"
+        elif charge == 1:
+            het = "N"
+        else:
+            continue
+        double_bonds = [
+            b for b in atom.GetBonds()
+            if b.GetBondTypeAsDouble() == 2.0 and b.GetOtherAtom(atom).GetSymbol() == het
+        ]
+        if len(double_bonds) >= 2:
+            atom.SetFormalCharge(0)
+            # Collect neighbors before modifying bonds (references stay valid).
+            change_nbs = [b.GetOtherAtom(atom) for b in double_bonds[:-1]]
+            keep_nb = double_bonds[-1].GetOtherAtom(atom)
+            for nb in change_nbs:
+                rwmol.RemoveBond(atom.GetIdx(), nb.GetIdx())
+                rwmol.AddBond(atom.GetIdx(), nb.GetIdx(), Chem.BondType.SINGLE)
+            # Carboxylate: [O-] goes on the first O that lost its double bond.
+            # Guanidinium: [N+] goes on the N that kept its double bond.
+            if charge == -1:
+                change_nbs[0].SetFormalCharge(charge)
+            else:
+                keep_nb.SetFormalCharge(charge)
+
+    # Fix 2: S(0) with three or more S=O double bonds (sulfonate encoding bug).
+    # One of the =O should be a single bond with [O-].
+    for atom in rwmol.GetAtoms():
+        if atom.GetSymbol() != "S" or atom.GetFormalCharge() != 0:
+            continue
+        o_double_bonds = [
             b for b in atom.GetBonds()
             if b.GetBondTypeAsDouble() == 2.0 and b.GetOtherAtom(atom).GetSymbol() == "O"
         ]
-        if len(double_o_bonds) >= 2:
-            atom.SetFormalCharge(0)
-            other_o = double_o_bonds[0].GetOtherAtom(atom)
-            rwmol.RemoveBond(atom.GetIdx(), other_o.GetIdx())
-            rwmol.AddBond(atom.GetIdx(), other_o.GetIdx(), Chem.BondType.SINGLE)
-            other_o.SetFormalCharge(-1)
+        if len(o_double_bonds) >= 3:
+            o_nb = o_double_bonds[0].GetOtherAtom(atom)
+            rwmol.RemoveBond(atom.GetIdx(), o_nb.GetIdx())
+            rwmol.AddBond(atom.GetIdx(), o_nb.GetIdx(), Chem.BondType.SINGLE)
+            o_nb.SetFormalCharge(-1)
+
+    # Fix 3: N(0) with excess valence.
+    # Iminium (sum==4): just add +1 charge.
+    # Nitro-like (2+ N=O double bonds): set N to +1 and convert one =O to -[O-].
+    for atom in rwmol.GetAtoms():
+        if atom.GetSymbol() != "N" or atom.GetFormalCharge() != 0:
+            continue
+        bond_order_sum = sum(b.GetBondTypeAsDouble() for b in atom.GetBonds())
+        if bond_order_sum < 4:
+            continue
+        o_double_bonds = [
+            b for b in atom.GetBonds()
+            if b.GetBondTypeAsDouble() == 2.0 and b.GetOtherAtom(atom).GetSymbol() == "O"
+        ]
+        atom.SetFormalCharge(1)
+        if len(o_double_bonds) >= 2:
+            # Nitro encoding: [N+](=O)[O-]. Convert one =O to single + [O-].
+            o_nb = o_double_bonds[0].GetOtherAtom(atom)
+            rwmol.RemoveBond(atom.GetIdx(), o_nb.GetIdx())
+            rwmol.AddBond(atom.GetIdx(), o_nb.GetIdx(), Chem.BondType.SINGLE)
+            o_nb.SetFormalCharge(-1)
+
     try:
         Chem.SanitizeMol(rwmol)
         return rwmol.GetMol()

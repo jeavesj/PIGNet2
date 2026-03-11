@@ -41,8 +41,19 @@ def protonate_mol(
     engine = dimorphite_dl.DimorphiteDL(**params)
 
     smi = Chem.MolToSmiles(mol)
-    protonated_smi = engine.protonate(smi)[0]
-    protonated_mol = AllChem.AssignBondOrdersFromTemplate(Chem.MolFromSmiles(protonated_smi), mol)
+    results = engine.protonate(smi)
+    if not results:
+        return mol
+
+    protonated_smi = results[0].strip()
+    template = Chem.MolFromSmiles(protonated_smi)
+    if template is None:
+        return mol
+
+    try:
+        protonated_mol = AllChem.AssignBondOrdersFromTemplate(template, mol)
+    except Exception:
+        protonated_mol = mol
 
     return protonated_mol
 

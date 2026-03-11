@@ -19,6 +19,38 @@ conda install rdkit=2022.03.4 openbabel pymol-open-source -c conda-forge
 pip install -r requirements.txt
 ```
 
+### Notes on installation (CUDA 12.x systems)
+
+> The steps above match the original upstream README. The following notes
+> document changes made when installing on a system with **CUDA 12.6 / driver 560**
+> (e.g. NVIDIA H200). A convenience script `install.sh` encapsulates everything.
+
+**Three issues were found and fixed relative to the original repo:**
+
+1. **`dimorphite_dl` was removed from PyPI** and the latest versions on GitHub
+   require Python ≥ 3.10 (this repo uses Python 3.9). Additionally, the
+   `DimorphiteDL` class used in `dataset/preprocess/protonate.py` does not
+   exist in any published version of the package. A compatibility shim built
+   on the v1.2.4 source has been committed to
+   `dataset/preprocess/dimorphite_dl/`, which is already on `sys.path` via
+   `src/exe/path.py`, so no extra steps are needed.
+
+2. **`torch==1.9.1+cu111` (CUDA 11.1) is incompatible with CUDA 12.x drivers.**
+   `torch-sparse` tried to load `libcusparse.so.11` which does not exist on
+   CUDA 12.x systems. `requirements.txt` has been updated to
+   `torch==2.4.1` via `--extra-index-url https://download.pytorch.org/whl/cu121`,
+   which bundles CUDA 12.1 libraries and runs on any CUDA 12.x driver.
+
+3. **PyTorch Geometric extension packages** (`torch-scatter`, `torch-sparse`,
+   `torch-cluster`, `torch-spline-conv`) were pinned to cu111 builds and
+   updated to matching cu121 builds for torch 2.4.x. `torch-geometric` was
+   updated from 2.0.3 → 2.4.0 accordingly.
+
+**Quick install (CUDA 12.x):**
+```console
+bash install.sh
+```
+
 ## Data
 
 Donwload our source data into `dataset` directory in this repository.

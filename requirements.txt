@@ -10,14 +10,18 @@ scipy==1.7.2
 tqdm==4.64.0
 tensorboard==2.9.1
 setuptools==59.5.0
-dimorphite_dl
+# dimorphite_dl: not on PyPI (requires Python>=3.10); installed manually as
+# a compatibility shim in site-packages. See README note below.
+# git+https://github.com/durrantlab/dimorphite_dl.git  # requires Python>=3.10
 
---find-links https://download.pytorch.org/whl/torch_stable.html
-torch==1.9.1+cu111
+--extra-index-url https://download.pytorch.org/whl/cu121
+# torch==1.9.1+cu111  # original; CUDA 11.1 only — incompatible with CUDA 12.x systems
+torch==2.4.1
 
---find-links https://data.pyg.org/whl/torch-1.9.0+cu111.html
-torch-scatter==2.0.9
-torch-sparse==0.6.12
-torch-cluster==1.5.9
-torch-spline-conv==1.2.1
-torch-geometric==2.0.3
+--find-links https://data.pyg.org/whl/torch-2.4.0+cu121.html
+# Versions updated from the original (cu111 builds) to match torch 2.4.x / CUDA 12.1
+torch-scatter==2.1.2
+torch-sparse==0.6.18
+torch-cluster==1.6.3
+torch-spline-conv==1.2.2
+torch-geometric==2.4.0

@@ -1,0 +1,32 @@
+#!/bin/bash --login
+#SBATCH --job-name=pignet2
+#SBATCH --time=02:59:00
+#SBATCH --mem=32G
+#SBATCH --gpus=h200:1
+#SBATCH --cpus-per-task=2
+#SBATCH --output=/mnt/scratch/jeaves/PIGNet2/logs/%x_%A_%a.out
+#SBATCH --error=/mnt/scratch/jeaves/PIGNet2/logs/%x_%A_%a.err
+
+#set -euo pipefail
+
+module purge
+module load Miniforge3
+conda activate pignet2
+
+BASE_DIR="/mnt/scratch/jeaves/PIGNet2"
+CSV_PATH="${BASE_DIR}/casf2016_smiles_seqs_cleaned.csv"
+OUT_CSV="${BASE_DIR}/casf2016_PIGNet2_preds_and_times.csv"
+
+echo "pdbid,pK_true,pK_predicted,t_tot_s" > "$OUT_CSV"
+
+while IFS=',' read -r pdbid smiles sequence || [[ -n "$pdbid" ]]; do
+    pdbid="${pdbid//$'\r'/}"
+    pdbid="${pdbid//\"/}"
+    pdbid="$(echo "$pdbid" | xargs)"
+
+    protein="${BASE_DIR}/coreset/${pdbid}/${pdbid}_protein.pdb"
+    ligand="${BASE_DIR}/coreset/${pdbid}/${pdbid}_ligand.sdf"
+
+    python3 src/exe/predict.py ./src/ckpt/pda_0.pt -p "$protein" -l "$ligand" -o "$OUT_CSV"
+
+done < <(tail -n +2 "$CSV_PATH")

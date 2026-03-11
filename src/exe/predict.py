@@ -122,9 +122,9 @@ def main(args: argparse.Namespace):
     start_time = time.time()
     model.reset_log()
     run(model, data, device)
-    print("Time:", time.time() - start_time)
-
-    utils.write_predictions(model, config, False)
+    t = time.time() - start_time
+    print("Time:", t)
+    utils.write_predictions(model, config, False, t)
 
 
 if __name__ == "__main__":

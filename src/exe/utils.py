@@ -187,6 +187,7 @@ def write_predictions(
     model: Module,
     config: DictConfig,
     train: bool,
+    time: float
 ) -> None:
     # model.predictions[task][key] -> [vdw, hbond, ml, hydro]
     # model.labels[task][key] -> label: float
@@ -201,13 +202,15 @@ def write_predictions(
         pred = model.predictions[task]
         true = model.labels.get(task, {})
 
-        with open(config.data[task][prefix + "result_path"], "w") as f:
+        if not os.path.exists(config.data[task][prefix + "result_path"]):
+            with open(config.data[task][prefix + "result_path"], "w") as f:
+                f.write(f'pdbid,pK_true,pK_predicted,t_tot_s\n')
+        with open(config.data[task][prefix + "result_path"], "a") as f:
             for key in sorted(keys):
-                f.write(f"{key}\t{true.get(key, 0.0):.3f}")
-                f.write(f"\t{sum(pred[key]):.3f}")
-                for energy in pred[key]:
-                    f.write(f"\t{energy:.3f}")
-                f.write("\n")
+                f.write(f"{key},{true.get(key, 0.0):.3f},{-sum(pred[key]):.3f},{time}\n")
+                # for energy in pred[key]:
+                #     f.write(f"{energy:.3f},")
+                # f.write("\n")
 
     if train:
         try:
